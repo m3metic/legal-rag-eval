@@ -1,0 +1,5 @@
+name: maud_bm25_window200
+dataset: {name: maud, eval: {query_mode: question}}
+chunking: {strategy: window, size: 200, overlap: 50}
+retriever: {type: bm25}
+breakdown_by: deal_point

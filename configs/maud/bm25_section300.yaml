@@ -1,0 +1,5 @@
+name: maud_bm25_section300
+dataset: {name: maud, eval: {query_mode: question}}
+chunking: {strategy: section, max_words: 300, overlap: 50, add_heading: true}
+retriever: {type: bm25}
+breakdown_by: deal_point

@@ -1,0 +1,9 @@
+name: maud_hybrid_section300
+dataset: {name: maud, eval: {query_mode: question}}
+chunking: {strategy: section, max_words: 300, overlap: 50, add_heading: true}
+retriever:
+  type: hybrid
+  retrievers:
+    - {type: bm25}
+    - {type: dense, model: BAAI/bge-small-en-v1.5, query_prefix: "Represent this sentence for searching relevant passages: "}
+breakdown_by: deal_point

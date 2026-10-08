@@ -1,0 +1,30 @@
+# How a due-diligence reviewer would ask for each MAUD deal point.
+#
+# MAUD labels *which clause* answers each deal-point question, but not how a
+# person would phrase the search. These queries are first drafts. Rewriting
+# them is part of the project: try plain-English versions, lawyer phrasing,
+# and keyword-heavy versions, and measure which retrieve best. Keep a record
+# of what you changed and why; it makes a good section in the write-up.
+
+"Type of Consideration": "What will target shareholders receive per share: cash, stock, or a mix?"
+"Accuracy of Target R&W Closing Condition": "Closing condition requiring the target's representations and warranties to be true and correct"
+"Compliance with Covenant Closing Condition": "Closing condition requiring the company to have performed and complied with its covenants and obligations"
+"Absence of Litigation Closing Condition": "Closing condition that no injunction, order or law prohibits or restrains the merger"
+"MAE Definition": "Definition of Company Material Adverse Effect and its carve-outs"
+"Knowledge Definition": "Definition of knowledge of the Company and the individuals whose knowledge counts"
+"No-Shop": "No solicitation covenant restricting the company from soliciting or discussing alternative acquisition proposals"
+"Fiduciary exception:  Board determination (no-shop)": "Exception allowing the board to engage with an unsolicited proposal if failing to do so would be inconsistent with its fiduciary duties"
+"Fiduciary exception to COR covenant": "When may the board change its recommendation to shareholders because of its fiduciary duties?"
+"Agreement provides for matching rights in connection with COR": "Parent's right to match or negotiate before the board changes its recommendation"
+"Superior Offer Definition": "Definition of Superior Proposal"
+"Intervening Event Definition": "Definition of Intervening Event"
+"FTR Triggers": "Circumstances in which the company may terminate the agreement to accept a superior proposal"
+"Limitations on FTR Exercise": "Conditions the company must satisfy before terminating to accept a superior proposal, such as paying the termination fee"
+"Agreement provides for matching rights in connection with FTR": "Parent's matching rights before the company terminates for a superior proposal"
+"Tail Period & Acquisition Proposal Details": "Termination fee payable if the company enters into another acquisition within a period after termination (tail provision)"
+"Breach of No Shop": "Termination fee or remedy for breach of the no-solicitation covenant"
+"Breach of Meeting Covenant": "Termination fee or remedy for failing to hold the shareholder meeting"
+"Ordinary course covenant": "Covenant that the company will conduct its business in the ordinary course between signing and closing"
+"Negative interim operating covenant": "Actions the company may not take before closing without parent's consent"
+"General Antitrust Efforts Standard": "Efforts standard (reasonable best efforts) to obtain antitrust and regulatory approvals"
+"Specific Performance": "Parties are entitled to specific performance and injunctions to enforce the agreement"

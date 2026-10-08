@@ -1,0 +1,5 @@
+name: obliqa_bm25_window3
+dataset: {name: obliqa, eval: {split: test}}
+chunking: {strategy: window, size: 3, stride: 2}
+retriever: {type: bm25}
+breakdown_by: n_passages

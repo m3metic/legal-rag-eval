@@ -1,0 +1,8 @@
+# Same as bm25_section300 but searches with the bare deal-point name
+# ("MAE Definition") instead of the written question. Measures how much
+# query wording matters.
+name: maud_bm25_section300_labelquery
+dataset: {name: maud, eval: {query_mode: label}}
+chunking: {strategy: section, max_words: 300, overlap: 50, add_heading: true}
+retriever: {type: bm25}
+breakdown_by: deal_point

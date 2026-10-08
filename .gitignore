@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+.venv/
+.cache/
+.pytest_cache/
+.ruff_cache/
+data/raw/
+# Keep metrics.json files (small, worth committing); skip the large per-query logs.
+results/**/per_query.jsonl
+.DS_Store

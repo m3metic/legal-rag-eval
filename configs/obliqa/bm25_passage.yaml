@@ -1,0 +1,5 @@
+name: obliqa_bm25_passage
+dataset: {name: obliqa, eval: {split: test}}
+chunking: {strategy: passage}
+retriever: {type: bm25}
+breakdown_by: n_passages

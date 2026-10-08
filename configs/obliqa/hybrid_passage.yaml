@@ -1,0 +1,9 @@
+name: obliqa_hybrid_passage
+dataset: {name: obliqa, eval: {split: test}}
+chunking: {strategy: passage}
+retriever:
+  type: hybrid
+  retrievers:
+    - {type: bm25}
+    - {type: dense, model: BAAI/bge-small-en-v1.5, query_prefix: "Represent this sentence for searching relevant passages: "}
+breakdown_by: n_passages
