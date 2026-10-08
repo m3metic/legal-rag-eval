@@ -21,6 +21,19 @@ SECTION_HEADING = re.compile(
     r")"
 )
 
+# Cross-references in running text look like headings ("conditions set forth
+# in Article VI"). A real heading never follows a lowercase word or a comma.
+_INLINE_REFERENCE = re.compile(r"[a-z,;(]\s{1,2}$")
+
+
+def heading_starts(text: str) -> list[int]:
+    """Character offsets of section headings, skipping inline cross-references."""
+    return [
+        m.start(1)
+        for m in SECTION_HEADING.finditer(text)
+        if not _INLINE_REFERENCE.search(text[max(0, m.start(1) - 3) : m.start(1)])
+    ]
+
 
 def word_windows(
     doc_id: str,
@@ -68,7 +81,7 @@ def sections(
     window from the middle of "Section 7.1 Termination" still mentions
     termination. This is a cheap form of contextual chunking.
     """
-    starts = [m.start(1) for m in SECTION_HEADING.finditer(text)]
+    starts = heading_starts(text)
     bounds = [0, *starts, len(text)]
     chunks: list[Chunk] = []
     for n, (s, e) in enumerate(itertools.pairwise(bounds)):

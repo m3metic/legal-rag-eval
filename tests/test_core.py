@@ -85,6 +85,16 @@ def test_sections_split_on_headings_and_add_heading_prefix():
     assert "terminated" in text[chunks[2].start : chunks[2].end]
 
 
+def test_sections_ignore_inline_cross_references():
+    text = (
+        "ARTICLE V COVENANTS   Section 5.2   Forbearances. The Company shall not take any "
+        "action that would cause the conditions set forth in Article VII not to be satisfied."
+    )
+    chunks = sections("d", text, max_words=50, overlap=5)
+    assert len(chunks) == 2  # ARTICLE V and Section 5.2, not "Article VII" mid-sentence
+    assert chunks[1].text.startswith("[Section 5.2 Forbearances.]")
+
+
 # -- dataset helpers -------------------------------------------------------
 def test_obliqa_ancestors():
     assert _ancestors("14.2.3.Guidance.10.") == ["14", "14.2", "14.2.3", "14.2.3.Guidance"]
