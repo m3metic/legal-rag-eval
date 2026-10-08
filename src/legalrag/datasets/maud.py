@@ -50,26 +50,57 @@ def normalise(text: str) -> tuple[str, list[int]]:
     return "".join(out), idx
 
 
-def locate(norm_doc: str, piece: str, anchor_words: int = 10) -> tuple[int, int] | None:
-    """Find a normalised excerpt piece in a normalised contract.
+def _find_all(text: str, sub: str) -> list[int]:
+    out, i = [], text.find(sub)
+    while i >= 0:
+        out.append(i)
+        i = text.find(sub, i + 1)
+    return out
 
-    Exact match first. Annotators sometimes trimmed words inside a piece, so
-    fall back to matching its first and last `anchor_words` words.
+
+def candidates(norm_doc: str, piece: str, anchor_words: int = 10) -> list[tuple[int, int]]:
+    """Every place a normalised excerpt piece could sit in a normalised contract.
+
+    Exact matches first. Annotators sometimes trimmed words inside a piece, so
+    fall back to matching its first and last `anchor_words` words. A piece can
+    match several places: a section heading also appears in the table of
+    contents, and boilerplate phrases repeat. `choose_spans` picks between them.
     """
     words = piece.split()
     if len(words) < MIN_PIECE_WORDS:
-        return None
-    i = norm_doc.find(piece)
-    if i >= 0:
-        return i, i + len(piece)
+        return []
+    exact = _find_all(norm_doc, piece)
+    if exact:
+        return [(i, i + len(piece)) for i in exact]
     head, tail = " ".join(words[:anchor_words]), " ".join(words[-anchor_words:])
-    i = norm_doc.find(head)
-    if i < 0:
-        return None
-    j = norm_doc.find(tail, i)
-    if 0 <= j and j - i <= 2 * len(piece):
-        return i, j + len(tail)
-    return i, min(len(norm_doc), i + len(piece))
+    out = []
+    for i in _find_all(norm_doc, head):
+        j = norm_doc.find(tail, i)
+        out.append((i, j + len(tail)) if 0 <= j and j - i <= 2 * len(piece) else (i, min(len(norm_doc), i + len(piece))))
+    return out
+
+
+def choose_spans(per_piece: list[list[tuple[int, int]]]) -> list[tuple[int, int]]:
+    """Pick one location per piece, keeping an excerpt's pieces close together.
+
+    Pieces that match exactly one place are anchors. An ambiguous piece takes
+    the candidate nearest the anchors' median position. With no anchors, the
+    reference is the median of each piece's last candidate, which steers away
+    from the table of contents at the front of the contract.
+    """
+    found = [c for c in per_piece if c]
+    if not found:
+        return []
+    anchors = sorted(c[0][0] for c in found if len(c) == 1)
+    refs = anchors or sorted(c[-1][0] for c in found)
+    ref = refs[len(refs) // 2]
+    return [min(c, key=lambda span: abs(span[0] - ref)) for c in found]
+
+
+def locate(norm_doc: str, piece: str, anchor_words: int = 10) -> tuple[int, int] | None:
+    """First match of a single piece (kept for simple lookups and tests)."""
+    found = candidates(norm_doc, piece, anchor_words)
+    return found[0] if found else None
 
 
 class MAUD:
@@ -119,12 +150,8 @@ class MAUD:
             if contract not in norm_cache:
                 norm_cache[contract] = normalise(self.contracts[contract])
             norm_doc, idx = norm_cache[contract]
-            spans = []
-            for piece in excerpt.split("<omitted>"):
-                hit = locate(norm_doc, normalise(piece)[0].strip())
-                if hit:
-                    s, e = hit
-                    spans.append(Span(contract, idx[s], idx[e - 1] + 1))
+            per_piece = [candidates(norm_doc, normalise(p)[0].strip()) for p in excerpt.split("<omitted>")]
+            spans = [Span(contract, idx[s], idx[e - 1] + 1) for s, e in choose_spans(per_piece)]
             if not spans:
                 stats["unlocated"] += 1
                 continue

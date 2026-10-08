@@ -6,7 +6,7 @@ import math
 import pytest
 
 from legalrag.chunking import sections, word_windows
-from legalrag.datasets.maud import locate, normalise
+from legalrag.datasets.maud import candidates, choose_spans, locate, normalise
 from legalrag.datasets.obliqa import _ancestors
 from legalrag.metrics import score_ranking
 from legalrag.retrievers import BM25Retriever, HybridRetriever
@@ -108,6 +108,18 @@ def test_maud_locate_maps_back_to_original_offsets():
     s, e = locate(norm_doc, normalise(piece)[0].strip())
     found = original[idx[s] : idx[e - 1] + 1]
     assert found.startswith("Company Material") and found.endswith("effect")
+
+
+def test_maud_choose_spans_skips_table_of_contents():
+    # A heading appears twice: in the table of contents (early) and in the body.
+    toc = "section 7 2 conditions to obligations of parent 56 section 8 1 termination 58 "
+    body = "filler " * 50 + "section 7 2 conditions to obligations of parent the obligations of parent are subject to "
+    doc = toc + body + "the representations and warranties of the company shall be true and correct"
+    heading = candidates(doc, "section 7 2 conditions to obligations of parent")
+    unique = candidates(doc, "the representations and warranties of the company shall be true and correct")
+    assert len(heading) == 2 and len(unique) == 1
+    chosen = choose_spans([heading, unique])
+    assert chosen[0][0] == doc.index("section 7 2", len(toc))  # the body copy, not the contents line
 
 
 def test_maud_locate_tolerates_trimmed_middle():
