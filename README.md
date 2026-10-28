@@ -2,86 +2,103 @@
 
 **How well does retrieval work on real legal documents, and what actually improves it?**
 
-A retrieval-evaluation framework for legal RAG, tested on two expert-labelled benchmarks:
+An evaluation framework for the retrieval step of legal RAG systems, tested on two expert-labelled benchmarks:
 
 | Use case | Dataset | Corpus | Questions | Ground truth |
 |---|---|---|---|---|
-| **Regulatory compliance** | [ObliQA](https://github.com/RegNLP/ObliQADataset) | 40 Abu Dhabi Global Market (ADGM) financial regulations, 13k passages | 2,786 test questions a compliance officer would ask | Passage IDs that answer each question |
-| **M&A due diligence** | [MAUD](https://github.com/TheAtticusProject/maud) | 152 public merger agreements, ~52k words each | 2,836 (agreement × deal point) pairs, 22 deal points | Clause spans marked by lawyers |
+| Regulatory compliance | [ObliQA](https://github.com/RegNLP/ObliQADataset) | 40 Abu Dhabi Global Market (ADGM) financial regulations, 13k passages | 2,786 test questions | Passages that answer each question |
+| M&A due diligence | [MAUD](https://github.com/TheAtticusProject/maud) | 152 public merger agreements, ~52k words each | 2,836 contract × clause-type pairs (22 clause types) | Clause text marked by lawyers |
 
-Most RAG demos never measure whether the right text was retrieved. In a compliance or diligence setting, a missed obligation or a missed termination-fee clause is the failure that matters, so this project starts from measurement and treats every design choice (chunking, retriever, query wording) as an experiment.
+In compliance and due diligence, a missed obligation or a missed termination clause is the failure that matters. So this project measures whether the right text is retrieved, and treats every design choice (chunking, retriever, query wording) as an experiment.
 
-> 🚧 Work in progress. BM25 baselines are done; dense, hybrid and reranking runs are next.
+## Results
 
-## Results so far
+**Compliance (ObliQA, 2,786 questions)**
 
-**ObliQA (compliance), BM25.** Our passage-level baseline gets recall@10 of 0.754, close to the 0.761 reported by the dataset authors ([Gokhan et al., 2024](https://arxiv.org/abs/2409.05677)), which is a useful check that the evaluation code is correct.
+| Retriever · chunking | recall@1 | recall@10 | MRR | recall@1000w |
+|---|---|---|---|---|
+| BM25 · single passage | 0.514 | 0.754 | 0.673 | 0.765 |
+| BM25 · 3-passage windows | 0.541 | **0.794** | 0.691 | 0.716 |
+| Dense (bge-small) · single passage | 0.435 | 0.686 | 0.582 | 0.688 |
+| Hybrid (BM25 + bge-small) · single passage | 0.513 | 0.763 | 0.673 | **0.772** |
+| Hybrid + reranker (20 candidates) · passage + section titles | **0.570** | 0.771 | **0.719** | 0.770 |
 
-| experiment | chunks | words/chunk | recall@1 | recall@5 | recall@10 | MRR | recall@500w | recall@1000w |
-|---|---|---|---|---|---|---|---|---|
-| bm25 · passage | 13,012 | 64 | 0.514 | 0.694 | 0.754 | 0.673 | **0.716** | **0.765** |
-| bm25 · passage + section headers | 13,012 | 73 | 0.513 | 0.695 | 0.747 | 0.671 | 0.700 | 0.758 |
-| bm25 · 3-passage windows | 6,495 | 194 | **0.541** | **0.735** | **0.794** | **0.691** | 0.614 | 0.716 |
+The BM25 baseline (recall@10 0.754) reproduces the dataset authors' published figure of 0.761 to within a point.
 
-**MAUD (M&A), BM25, searching within the agreement under review.**
+**M&A due diligence (MAUD, 2,836 items, searching within the agreement under review)**
 
-| experiment | words/chunk | recall@1 | recall@5 | recall@10 | hit@5 | MRR | recall@1000w |
-|---|---|---|---|---|---|---|---|
-| bm25 · 200-word windows | 200 | 0.323 | 0.594 | 0.688 | 0.792 | 0.605 | **0.594** |
-| bm25 · section-aware chunks | 219 | **0.341** | **0.631** | **0.721** | **0.813** | **0.620** | 0.553 |
-| bm25 · section-aware, query = bare deal-point name | 219 | 0.117 | 0.268 | 0.367 | 0.327 | 0.231 | 0.224 |
+| Retriever · chunking | recall@1 | recall@5 | recall@10 | MRR | recall@1000w |
+|---|---|---|---|---|---|
+| BM25 · 200-word windows | 0.339 | 0.632 | 0.739 | 0.627 | 0.632 |
+| BM25 · section-aware chunks | 0.366 | 0.693 | 0.792 | 0.654 | 0.609 |
+| BM25 · section-aware, query = bare clause name | 0.118 | 0.281 | 0.379 | 0.237 | 0.226 |
+| Dense (bge-small) · section-aware | 0.351 | 0.648 | 0.752 | 0.607 | 0.570 |
+| Hybrid (BM25 + bge-small) · section-aware | **0.399** | **0.721** | **0.828** | **0.685** | **0.635** |
 
-### Early findings
+*recall@1000w* = share of the correct evidence that fits in the first 1,000 words of results, roughly what an LLM's context budget allows. See [docs/methodology.md](docs/methodology.md) for all metric definitions.
 
-1. **"Bigger chunks win" is partly a measurement artefact.** Three-passage windows beat single passages on recall@10 (0.794 vs 0.754), but they send three times as much text to the LLM. At a fixed context budget of 1,000 words, single passages win (0.765 vs 0.716). That's why every experiment reports budget-based recall alongside recall@k.
-2. **Finding *all* the obligations is the hard part.** For ObliQA questions backed by one passage, recall@10 is 0.83. For questions backed by 3 passages it drops to 0.39, even though at least one relevant passage is still in the top 10 for 88% of those questions. A compliance answer built on a partial set of obligations is a wrong answer.
-3. **Query wording matters more than any retriever tweak so far.** On MAUD, searching for "MAE Definition" instead of a written-out question cuts recall@5 from 0.63 to 0.27.
-4. **Some deal points are much harder than others.** Recall@5 ranges from 0.97 (specific performance) to 0.21 (negative interim operating covenants), which are long lists of restrictions spread across a section.
+## Key findings
+
+1. **Bigger chunks look better until you count the cost.** 3-passage windows beat single passages on recall@10 (0.794 vs 0.754), but at a fixed 1,000-word context budget single passages win (0.765 vs 0.716). Reporting budget-based recall reversed the conclusion.
+2. **Query wording mattered more than the retriever.** Searching for a bare clause name ("MAE Definition") instead of a written question cut recall@10 from 0.79 to 0.38. Rewriting one MAUD query in the contracts' own vocabulary raised retrieval of negative interim operating covenants from 0.24 to 0.76 recall@5, and the gain held on 146 contracts that were never inspected.
+3. **Embeddings help more on contracts than on regulations.** A small embedding model lost to BM25 on both datasets, but hybrid search added +3.6 points recall@10 on contracts against +0.9 on regulations. A likely reason: ObliQA's questions were generated from the passages that answer them, so they reuse the passage wording, which favours keyword search.
+4. **Reranking improves the top of the list, at a price.** A cross-encoder reranker raised recall@1 from 0.514 to 0.570 on ObliQA. Re-scoring 20 candidates instead of 50 kept the gains at about a third of the cost. The full pipeline (recall@10 0.771) comes within about a point of the 0.783 reported for a 7-billion-parameter embedding model, using models that run on a laptop.
+5. **Finding all the obligations is the hard part.** For ObliQA questions backed by one passage, recall@10 is 0.83; for questions backed by three, it falls to 0.39, even though at least one correct passage is retrieved for 88% of them.
+6. **Reading failures found three bugs the averages did not:** a metric that could exceed its maximum, a chunker that treated cross-references as section headings, and ground truth that pointed at the table of contents. Details in the [methodology](docs/methodology.md#bugs-found-through-error-analysis).
 
 ## How it works
 
-**Gold units, not chunks.** Each dataset defines its smallest unit of evidence: an ObliQA passage ID, or a character span in a MAUD agreement. Every chunk records which units it covers, so any chunking strategy can be scored against the same ground truth.
-
-**Making MAUD a retrieval benchmark.** MAUD was built for clause classification and stores each excerpt as pieces separated by `<omitted>`. The loader locates each piece in the full agreement (normalising punctuation and whitespace, with anchor matching when annotators trimmed words), recovering spans for 2,836 of 2,870 annotated items (98.8%).
-
-**Metrics.** recall@k, hit@k, MRR, nDCG@k, and recall at a fixed word budget (500 / 1,000 / 2,000 words). A MAUD span counts as found when a chunk overlaps it by at least 200 characters (or half the span, if shorter).
-
-**Retrievers.** BM25, dense embeddings (any sentence-transformers model, with instruction prefixes), hybrid via reciprocal rank fusion, and cross-encoder reranking on top of any of them. Embeddings are cached on disk by model and corpus hash.
+- **Ground truth is defined once, independent of chunking.** Each dataset defines its smallest unit of evidence (an ObliQA passage, or a character span in a MAUD contract). Every chunk records what it covers, so any chunking strategy is scored against the same answer key.
+- **MAUD converted to a retrieval benchmark.** MAUD was built for clause classification. Each lawyer-marked excerpt is located in the full contract text, with matches chosen to keep an excerpt's pieces together; 98.8% of items are recovered.
+- **Retrievers:** BM25, dense embeddings (any sentence-transformers model), hybrid via reciprocal rank fusion, and cross-encoder reranking on top of any of them.
+- **Every experiment is a YAML config.** Results record their own config, per-group breakdowns and timings, plus a per-question log for error analysis.
 
 ## Quickstart
 
 ```bash
-git clone https://github.com/<you>/legal-rag-eval && cd legal-rag-eval
+git clone https://github.com/m3metic/legal-rag-eval && cd legal-rag-eval
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dense,dev]"
-./scripts/download_data.sh          # ~130 MB, both datasets
+bash scripts/download_data.sh                                  # both datasets, ~130 MB
 
-python -m legalrag run configs/obliqa/bm25_passage.yaml --limit 200   # quick check
-python -m legalrag run configs/obliqa/*.yaml                          # full ObliQA suite
-python -m legalrag compare results/obliqa_*                            # markdown table
-pytest
+python -m pytest                                               # 15 tests
+python -m legalrag run configs/obliqa/bm25_passage.yaml        # one experiment
+python -m legalrag compare results/obliqa_*                    # markdown results table
+python -m legalrag inspect results/maud_hybrid_section300 \
+    --group "No-Shop" --n 5                                    # read failures side by side
 ```
 
-Each run writes `results/<name>/metrics.json` (scores, per-group breakdowns, timings) and `per_query.jsonl` (every query's ranked results, for error analysis).
+Models: `BAAI/bge-small-en-v1.5` (embeddings) and `BAAI/bge-reranker-base` (reranking), downloaded automatically on first use. Embeddings are cached in `.cache/`.
 
 ## Project layout
 
 ```
-configs/            one YAML per experiment; maud_queries.yaml holds the MAUD search queries
-scripts/            dataset download
+configs/              one YAML file per experiment; maud_queries.yaml holds the MAUD search queries
+docs/methodology.md   full write-up: datasets, ground truth, metrics, experiments, error analysis
+results/              metrics.json for every run reported above
+scripts/              dataset download
 src/legalrag/
-  types.py          Chunk, EvalItem, Span
-  metrics.py        rank-based and budget-based retrieval metrics
-  chunking.py       word windows and section-aware chunking for contracts
-  retrievers.py     BM25, dense, hybrid (RRF), reranking
-  datasets/         ObliQA and MAUD loaders
-  experiment.py     run a config, save results, compare runs
-tests/              metrics, chunk offsets, MAUD span location, retrievers
+  datasets/           ObliQA and MAUD loaders
+  chunking.py         word windows and section-aware chunking
+  retrievers.py       BM25, dense, hybrid (RRF), reranking
+  metrics.py          rank-based and budget-based retrieval metrics
+  experiment.py       run a config, save results, compare runs
+  inspect_failures.py side-by-side view of failed queries
+tests/                metrics, chunk offsets, ground-truth location, retrievers
 ```
+
+## Limitations and future work
+
+- ObliQA's questions were generated by an LLM and then validated, not written from scratch by compliance officers.
+- MAUD covers US public-company deals from 2021 only; 34 of 2,870 excerpts (1.2%) could not be located and are excluded.
+- One MAUD query was tuned after reading test-set failures; the gain was confirmed on held-out contracts.
+- This measures retrieval only. Next steps: answer generation with citations, end-to-end accuracy on MAUD's multiple-choice deal-point questions, fine-tuning the embedding model on ObliQA's training split, and query rewrites for the remaining weak clause types.
 
 ## Data and citations
 
-Datasets are downloaded from their original sources and not redistributed here.
+Datasets are downloaded from their original sources and are not redistributed here.
 
 - ObliQA: Gokhan, Wang, Gurevych & Briscoe. *RIRAG: Regulatory Information Retrieval and Answer Generation.* 2024. [arXiv:2409.05677](https://arxiv.org/abs/2409.05677)
 - MAUD: Wang et al. *MAUD: An Expert-Annotated Legal NLP Dataset for Merger Agreement Understanding.* EMNLP 2023. [arXiv:2301.00876](https://arxiv.org/abs/2301.00876). CC BY 4.0.
+
+Code in this repository is released under the [MIT License](LICENSE).
