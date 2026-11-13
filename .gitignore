@@ -7,4 +7,6 @@ __pycache__/
 data/raw/
 # Keep metrics.json files (small, worth committing); skip the large per-query logs.
 results/**/per_query.jsonl
+# Gate runs are regenerated on every check.
+results/gate/
 .DS_Store

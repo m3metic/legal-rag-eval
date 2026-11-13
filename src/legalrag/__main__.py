@@ -3,12 +3,14 @@
     python -m legalrag run configs/obliqa/bm25_passage.yaml [--limit 200]
     python -m legalrag compare results/obliqa_*
     python -m legalrag inspect results/maud_bm25_section300 --group "No-Shop" --n 5
+    python -m legalrag gate [configs/gate.yaml] [--update]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 
 from .experiment import compare, run
 
@@ -36,8 +38,17 @@ def main() -> None:
     p_ins.add_argument("--words", type=int, default=80, help="Words of text to show per passage")
     p_ins.add_argument("--seed", type=int, default=0, help="Change to see a different random sample")
 
+    p_gate = sub.add_parser("gate", help="Rerun the gate experiments and fail if any metric drops")
+    p_gate.add_argument("gate_file", nargs="?", default="configs/gate.yaml")
+    p_gate.add_argument("--out", default="results/gate")
+    p_gate.add_argument("--update", action="store_true", help="Write the new scores as the baseline")
+
     args = parser.parse_args()
-    if args.command == "run":
+    if args.command == "gate":
+        from .gate import gate
+
+        sys.exit(0 if gate(args.gate_file, args.out, args.update) else 1)
+    elif args.command == "run":
         for config in args.configs:
             result = run(config, limit=args.limit, out_root=args.out)
             print(f"\n== {result['name']} ({result['n_queries']} queries, {result['corpus']['n_chunks']} chunks)")
