@@ -1,5 +1,7 @@
 # legal-rag-eval
 
+[![CI](https://github.com/m3metic/legal-rag-eval/actions/workflows/ci.yml/badge.svg)](https://github.com/m3metic/legal-rag-eval/actions/workflows/ci.yml)
+
 **How well does retrieval work on real legal documents, and what actually improves it?**
 
 An evaluation framework for the retrieval step of legal RAG systems, tested on two expert-labelled benchmarks:
@@ -53,6 +55,14 @@ The BM25 baseline (recall@10 0.754) reproduces the dataset authors' published fi
 - **Retrievers:** BM25, dense embeddings (any sentence-transformers model), hybrid via reciprocal rank fusion, and cross-encoder reranking on top of any of them.
 - **Every experiment is a YAML config.** Results record their own config, per-group breakdowns and timings, plus a per-question log for error analysis.
 
+## Continuous evaluation
+
+Retrieval quality is tested on every push and pull request, the same way code is. A GitHub Actions workflow runs lint and unit tests, then an **evaluation gate**: it reruns BM25 on both full benchmarks (5,622 queries, about 3 minutes) and compares each metric with the baseline in [`configs/gate.yaml`](configs/gate.yaml). If any metric falls by more than 0.005, the run fails and the pull request is blocked. The comparison table appears on the run's summary page.
+
+Each metric is checked on each dataset separately, because a change can help one and hurt another. Removing the stopword filter from the BM25 tokenizer, for example, raised MAUD recall@1 (+0.010) but lowered ObliQA recall@10 (-0.011) and recall@1000w (-0.024). An average would have hidden that; the gate failed 5 of its 8 checks.
+
+When a change is meant to improve the numbers, `python -m legalrag gate --update` writes the new scores into the gate file. Committing it makes the improvement the new floor.
+
 ## Quickstart
 
 ```bash
@@ -61,11 +71,12 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dense,dev]"
 bash scripts/download_data.sh                                  # both datasets, ~130 MB
 
-python -m pytest                                               # 15 tests
+python -m pytest                                               # 21 tests
 python -m legalrag run configs/obliqa/bm25_passage.yaml        # one experiment
 python -m legalrag compare results/obliqa_*                    # markdown results table
 python -m legalrag inspect results/maud_hybrid_section300 \
     --group "No-Shop" --n 5                                    # read failures side by side
+python -m legalrag gate                                        # fail if quality drops vs baseline
 ```
 
 Models: `BAAI/bge-small-en-v1.5` (embeddings) and `BAAI/bge-reranker-base` (reranking), downloaded automatically on first use. Embeddings are cached in `.cache/`.
@@ -73,7 +84,9 @@ Models: `BAAI/bge-small-en-v1.5` (embeddings) and `BAAI/bge-reranker-base` (rera
 ## Project layout
 
 ```
-configs/              one YAML file per experiment; maud_queries.yaml holds the MAUD search queries
+.github/workflows/    CI: lint, tests and the evaluation gate on every push and pull request
+configs/              one YAML file per experiment; maud_queries.yaml holds the MAUD search queries;
+                      gate.yaml holds the baseline scores the CI gate enforces
 docs/methodology.md   full write-up: datasets, ground truth, metrics, experiments, error analysis
 results/              metrics.json for every run reported above
 scripts/              dataset download
@@ -84,7 +97,8 @@ src/legalrag/
   metrics.py          rank-based and budget-based retrieval metrics
   experiment.py       run a config, save results, compare runs
   inspect_failures.py side-by-side view of failed queries
-tests/                metrics, chunk offsets, ground-truth location, retrievers
+  gate.py             evaluation gate: rerun experiments, compare with baseline, pass or fail
+tests/                metrics, chunk offsets, ground-truth location, retrievers, gate logic
 ```
 
 ## Limitations and future work

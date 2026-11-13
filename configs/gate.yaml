@@ -1,0 +1,14 @@
+tolerance: 0.005
+experiments:
+- config: configs/obliqa/bm25_passage.yaml
+  baseline:
+    recall@1: 0.5136
+    recall@10: 0.7539
+    mrr: 0.6727
+    recall@1000w: 0.765
+- config: configs/maud/bm25_section300.yaml
+  baseline:
+    recall@1: 0.3656
+    recall@10: 0.7923
+    mrr: 0.6535
+    recall@1000w: 0.6087

@@ -1,0 +1,62 @@
+# Two jobs on every push and pull request:
+#   test  - lint and unit tests (seconds)
+#   gate  - rerun the BM25 experiments on both datasets and fail if any metric in
+#           configs/gate.yaml drops by more than the tolerance (about 3 minutes)
+# The gate's comparison table appears on the run's summary page, and the full
+# results are kept as a downloadable artifact for 30 days.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: python -m pytest -q
+
+  gate:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e .
+
+      - name: Restore datasets
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: datasets-${{ hashFiles('scripts/download_data.sh') }}
+      - name: Download datasets (skipped when cached)
+        run: bash scripts/download_data.sh
+
+      - name: Retrieval evaluation gate
+        run: python -m legalrag gate configs/gate.yaml
+
+      - name: Keep gate results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-results
+          path: results/gate
+          retention-days: 30
