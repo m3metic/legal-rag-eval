@@ -63,6 +63,21 @@ Each metric is checked on each dataset separately, because a change can help one
 
 When a change is meant to improve the numbers, `python -m legalrag gate --update` writes the new scores into the gate file. Committing it makes the improvement the new floor.
 
+## Answer generation with citations
+
+`python -m legalrag answer configs/answers/obliqa_bm25.yaml` takes a fixed random sample of 100 ObliQA test questions. For each one, a writer model answers from the top 5 retrieved passages and cites them as `[1]`, `[2]`. If the passages don't answer the question, it says so. ObliQA has no reference answers, so the passages labelled as answering each question serve as the reference. The answers are scored in two ways:
+
+- **Citation scores, with no model involved:**
+  - **Citation precision:** how many cited passages are among the correct ones.
+  - **Citation recall:** how many correct passages were cited.
+  - **Citation recall within the context:** of the correct passages the writer was shown, how many it cited. This separates "retrieval missed it" from "the writer ignored it".
+  - **Rates** of answers citing passages they weren't shown, answers with no citations, and answers declining to answer.
+- **Grader scores:** a second model splits each answer into claims and checks each one against the passages the answer cites (**faithfulness**). It also lists the obligations in the correct passages and checks which ones the answer states (**obligation coverage**), and flags any contradictions.
+
+The writer (Claude Haiku) and the grader (an OpenAI model) come from different providers on purpose. AI graders tend to rate answers from their own model family more kindly, and the results file flags a run where they share a family. Models are set in the config as `provider:model`, so either can be swapped. Every model response is cached in `.cache/llm/`, so rerunning only pays for calls that changed.
+
+Because this calls paid APIs, it runs weekly and on demand in GitHub Actions ([`answers.yml`](.github/workflows/answers.yml)), not on every push. It needs the `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` repository secrets. Without the grader's key, it still reports the citation scores.
+
 ## Quickstart
 
 ```bash
@@ -71,12 +86,15 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dense,dev]"
 bash scripts/download_data.sh                                  # both datasets, ~130 MB
 
-python -m pytest                                               # 21 tests
+python -m pytest                                               # 31 tests
 python -m legalrag run configs/obliqa/bm25_passage.yaml        # one experiment
 python -m legalrag compare results/obliqa_*                    # markdown results table
 python -m legalrag inspect results/maud_hybrid_section300 \
     --group "No-Shop" --n 5                                    # read failures side by side
 python -m legalrag gate                                        # fail if quality drops vs baseline
+
+pip install -e ".[llm]"                                        # answer generation (needs API keys)
+python -m legalrag answer configs/answers/obliqa_bm25.yaml     # cited answers, graded
 ```
 
 Models: `BAAI/bge-small-en-v1.5` (embeddings) and `BAAI/bge-reranker-base` (reranking), downloaded automatically on first use. Embeddings are cached in `.cache/`.
@@ -84,9 +102,11 @@ Models: `BAAI/bge-small-en-v1.5` (embeddings) and `BAAI/bge-reranker-base` (rera
 ## Project layout
 
 ```
-.github/workflows/    CI: lint, tests and the evaluation gate on every push and pull request
+.github/workflows/    ci.yml: lint, tests and the evaluation gate on every push and pull request;
+                      answers.yml: weekly answer-quality run
 configs/              one YAML file per experiment; maud_queries.yaml holds the MAUD search queries;
-                      gate.yaml holds the baseline scores the CI gate enforces
+                      gate.yaml holds the baseline scores the CI gate enforces;
+                      answers/ holds answer-generation configs
 docs/methodology.md   full write-up: datasets, ground truth, metrics, experiments, error analysis
 results/              metrics.json for every run reported above
 scripts/              dataset download
@@ -98,7 +118,10 @@ src/legalrag/
   experiment.py       run a config, save results, compare runs
   inspect_failures.py side-by-side view of failed queries
   gate.py             evaluation gate: rerun experiments, compare with baseline, pass or fail
-tests/                metrics, chunk offsets, ground-truth location, retrievers, gate logic
+  llm.py              one interface over Anthropic and OpenAI models, with a response cache
+  answering.py        cited answers, citation scores and grading
+tests/                metrics, chunk offsets, ground-truth location, retrievers, gate logic,
+                      answering (with stand-in models, no API calls)
 ```
 
 ## Limitations and future work
@@ -106,7 +129,8 @@ tests/                metrics, chunk offsets, ground-truth location, retrievers,
 - ObliQA's questions were generated by an LLM and then validated, not written from scratch by compliance officers.
 - MAUD covers US public-company deals from 2021 only; 34 of 2,870 excerpts (1.2%) could not be located and are excluded.
 - One MAUD query was tuned after reading test-set failures; the gain was confirmed on held-out contracts.
-- This measures retrieval only. Next steps: answer generation with citations, end-to-end accuracy on MAUD's multiple-choice deal-point questions, fine-tuning the embedding model on ObliQA's training split, and query rewrites for the remaining weak clause types.
+- Answer quality is graded by a model, which is cheaper than lawyers but not a substitute: a sample of grades should be checked by hand before the grader's scores are trusted. Answer generation covers ObliQA only so far.
+- Next steps: answer-quality baselines added to the gate once the first real run is in, end-to-end accuracy on MAUD's multiple-choice deal-point questions, fine-tuning the embedding model on ObliQA's training split, and query rewrites for the remaining weak clause types.
 
 ## Data and citations
 

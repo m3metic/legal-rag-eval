@@ -4,6 +4,7 @@
     python -m legalrag compare results/obliqa_*
     python -m legalrag inspect results/maud_bm25_section300 --group "No-Shop" --n 5
     python -m legalrag gate [configs/gate.yaml] [--update]
+    python -m legalrag answer configs/answers/obliqa_bm25.yaml [--sample 20] [--no-grade]
 """
 
 from __future__ import annotations
@@ -43,8 +44,33 @@ def main() -> None:
     p_gate.add_argument("--out", default="results/gate")
     p_gate.add_argument("--update", action="store_true", help="Write the new scores as the baseline")
 
+    p_ans = sub.add_parser("answer", help="Generate cited answers for a sample of questions and grade them")
+    p_ans.add_argument("config", help="An answer config, e.g. configs/answers/obliqa_bm25.yaml")
+    p_ans.add_argument("--sample", type=int, help="Override the number of questions in the config")
+    p_ans.add_argument("--generator", help='Override the writer model, e.g. "openai:gpt-6.1-terra"')
+    p_ans.add_argument("--grader", help='Override the grader model, e.g. "anthropic:claude-sonnet-5-5"')
+    p_ans.add_argument("--no-grade", action="store_true", help="Skip the grader; citation scores only")
+    p_ans.add_argument("--out", default="results")
+
     args = parser.parse_args()
-    if args.command == "gate":
+    if args.command == "answer":
+        import os
+
+        from .answering import run_answers, summary_markdown
+
+        result = run_answers(
+            args.config, args.out, args.sample, args.generator, args.grader, grade=not args.no_grade
+        )
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+                f.write("## Answer quality\n\n" + summary_markdown(result) + "\n")
+        print(f"\n== {result['name']} ({result['n_questions']} questions)")
+        print(f"writer: {result['generator']}   grader: {result['grader']}")
+        if result.get("warning"):
+            print(f"warning: {result['warning']}")
+        print(json.dumps(result["metrics"], indent=2))
+        print(json.dumps(result["usage"], indent=2))
+    elif args.command == "gate":
         from .gate import gate
 
         sys.exit(0 if gate(args.gate_file, args.out, args.update) else 1)
