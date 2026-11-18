@@ -1,0 +1,94 @@
+# Answer quality: write cited answers for a fixed sample of ObliQA questions and grade them.
+# Runs weekly and on demand (Actions tab -> "Answer quality" -> Run workflow). It calls paid
+# model APIs, so it does not run on every push; the free retrieval gate in ci.yml does.
+#
+# Needs repository secrets (Settings -> Secrets and variables -> Actions):
+#   ANTHROPIC_API_KEY  for the writer (claude-haiku-5-5 by default)
+#   OPENAI_API_KEY     for the grader (gpt-6.1-sol by default)
+# Without the grader's key it still runs and reports the citation scores, which need no model.
+#
+# Model responses are cached between runs, so a run only pays for calls whose prompt,
+# model or settings changed since the last one.
+
+name: Answer quality
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"   # Mondays 03:17 UTC (07:17 UAE)
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: "Number of questions"
+        default: "100"
+      generator:
+        description: 'Writer model override, e.g. "openai:gpt-6.1-terra" (blank = config)'
+        default: ""
+      grader:
+        description: 'Grader model override, e.g. "anthropic:claude-sonnet-5-5" (blank = config)'
+        default: ""
+
+concurrency:
+  group: answers
+  cancel-in-progress: false
+
+jobs:
+  answers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[llm]"
+
+      - name: Restore datasets
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: datasets-${{ hashFiles('scripts/download_data.sh') }}
+      - name: Download datasets (skipped when cached)
+        run: bash scripts/download_data.sh
+
+      - name: Restore model response cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/llm
+          key: llm-${{ github.run_id }}
+          restore-keys: llm-
+
+      - name: Generate and grade answers
+        env:
+          SAMPLE: ${{ inputs.sample || '100' }}
+          GENERATOR: ${{ inputs.generator }}
+          GRADER: ${{ inputs.grader }}
+        run: |
+          args=(configs/answers/obliqa_bm25.yaml --sample "$SAMPLE")
+          [ -n "$GENERATOR" ] && args+=(--generator "$GENERATOR")
+          [ -n "$GRADER" ] && args+=(--grader "$GRADER")
+          writer="${GENERATOR:-$(grep '^generator:' configs/answers/obliqa_bm25.yaml | awk '{print $2}')}"
+          grader="${GRADER:-$(grep '^grader:' configs/answers/obliqa_bm25.yaml | awk '{print $2}')}"
+          key_for() { case "$1" in anthropic:*) echo "$ANTHROPIC_API_KEY";; openai:*) echo "$OPENAI_API_KEY";; esac; }
+          if [ -z "$(key_for "$writer")" ]; then
+            echo "::warning::No API key secret for the writer ($writer). Add it under Settings -> Secrets to run this workflow."
+            echo "Skipped: no API key for the writer model \`$writer\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ -z "$(key_for "$grader")" ]; then
+            echo "::warning::No API key secret for the grader ($grader); reporting citation scores only."
+            args+=(--no-grade)
+          fi
+          python -m legalrag answer "${args[@]}"
+
+      - name: Keep answers and scores
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: answers
+          path: results/obliqa_answers_*
+          if-no-files-found: ignore
+          retention-days: 90

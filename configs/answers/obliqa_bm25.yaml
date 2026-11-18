@@ -1,0 +1,11 @@
+# Cited answers for ObliQA, using BM25 retrieval (no GPU or embedding model needed).
+# The writer and the grader come from different providers on purpose: AI graders
+# tend to score answers from their own model family more kindly.
+name: obliqa_answers_bm25
+retrieval: configs/obliqa/bm25_passage.yaml
+k: 5                # passages the writer is shown
+sample: 100         # fixed random sample of test questions
+seed: 0
+generator: anthropic:claude-haiku-5-5
+grader: openai:gpt-6.1-sol
+max_tokens: 800

@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dense = ["sentence-transformers>=3.0"]
+llm = ["anthropic>=2.0", "openai>=3.0"]
 dev = ["pytest>=8", "ruff>=0.5"]
 
 [tool.setuptools.packages.find]
